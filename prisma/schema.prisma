@@ -1,0 +1,339 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String?   @unique
+  name          String?
+  email         String?   @unique
+  phone         String?   @unique 
+  whatsapp      String?   @unique
+  parentPhone   String?
+  grade         String?
+  governorate   String?
+  city          String?
+  subject       String?   // For Teachers
+  bio           String?   // For Teachers
+  experience    String?   // For Teachers
+  password      String?
+  role          String    @default("STUDENT")
+  isVerified    Boolean   @default(false)
+  verificationCode String?
+  
+  // Granular Permissions
+  canUpload             Boolean   @default(false) // Standard for Teachers
+  canManageCourses      Boolean   @default(false)
+  canManageUsers        Boolean   @default(false)
+  canManageSupport      Boolean   @default(false)
+  canManageCertificates Boolean   @default(false)
+  canManageSettings     Boolean   @default(false)
+  canViewStats          Boolean   @default(false)
+
+  isOnline      Boolean   @default(false)
+  image         String?
+  parentId      String?
+  parent        User?     @relation("ParentChildren", fields: [parentId], references: [id])
+  children      User[]    @relation("ParentChildren")
+  accounts      Account[]
+  sessions      Session[]
+  enrollments   Enrollment[]
+  materialPurchases MaterialPurchase[]
+  courses       Course[]  @relation("InstructorCourses")
+  progress      UserProgress[]
+  comments      Comment[]
+  notifications Notification[]
+  tickets       SupportTicket[] @relation("UserTickets")
+  handledTickets SupportTicket[] @relation("AgentTickets")
+  messages      SupportMessage[]
+  certificates  Certificate[]
+  reviews       Review[]
+  studentCode   String?   @unique
+  commissionRate Float?   // Percentage the TEACHER gets (e.g., 80 for 80%)
+  auditLogs     AuditLog[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("UserTickets", fields: [userId], references: [id], onDelete: Cascade)
+  agentId     String?
+  agent       User?    @relation("AgentTickets", fields: [agentId], references: [id])
+  status      String   @default("OPEN") // OPEN, CLOSED
+  subject     String?
+  messages    SupportMessage[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SupportMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId  String?
+  sender    User?    @relation(fields: [senderId], references: [id])
+  content   String
+  isAI      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Course {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  thumbnail   String?
+  price       Float     @default(0)
+  published   Boolean   @default(false)
+  isApproved  Boolean   @default(false)    // Admin approval required
+  level       String?   // PRIMARY, PREP, SECONDARY, UNIVERSITY, GRADUATE
+  grade       String?   // e.g., "الصف الأول", "السنة الثانية"
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  hasCertificate Boolean @default(false)
+  certificateTemplate String? // URL for custom certificate background image
+  instructorId String
+  instructor  User      @relation("InstructorCourses", fields: [instructorId], references: [id])
+  lessons     Lesson[]
+  enrollments Enrollment[]
+  coupons     Coupon[]
+  certificates Certificate[]
+  reviews     Review[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Certificate {
+  id          String   @id @default(cuid())
+  userId      String
+  courseId    String
+  issueDate   DateTime @default(now())
+  certificateUrl String?  // Optional: storage path to PDF/Image
+  serialNumber String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  title       String
+  content     String?
+  videoUrl    String?
+  pdfUrl      String?
+  isLive      Boolean  @default(false)
+  liveUrl     String?
+  isPreview   Boolean  @default(false) // Whether this lesson is free to watch before enrolling
+  order       Int
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quizzes     Quiz[]
+  comments    Comment[]
+  userProgress UserProgress[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  userId    String
+  lessonId  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model UserProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  lessonId  String
+  isCompleted Boolean @default(true)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+}
+
+model Enrollment {
+  id          String   @id @default(cuid())
+  userId      String
+  courseId    String
+  pricePaid   Float    @default(0) // Track actual price paid (after coupons)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model Quiz {
+  id        String     @id @default(cuid())
+  title     String
+  lessonId  String
+  lesson    Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions Question[]
+}
+
+model Question {
+  id            String   @id @default(cuid())
+  text          String
+  options       String   // JSON stringified options
+  correctAnswer String
+  quizId        String
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+}
+
+model Coupon {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  discount    Float    @default(0) // Percentage or fixed amount
+  type        String   @default("PERCENTAGE") // PERCENTAGE, FIXED
+  maxUses     Int?     @default(1)
+  currentUses Int      @default(0)
+  expiresAt   DateTime?
+  courseId    String?
+  materialId  String?
+  isForAll    Boolean  @default(false)
+  course      Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  material    Material? @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model PaymentMethod {
+  id           String   @id @default(cuid())
+  name         String   // e.g., "Vodafone Cash"
+  provider     String   // e.g., "vodafone"
+  details      String   // The number or account info to pay to
+  instructions String?  // Instruction for the user
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}
+
+model Material {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  thumbnail     String?
+  price         Float    @default(0)
+  type          String   @default("NOTE") // BOOK, NOTE, SUMMARY
+  format        String   @default("PDF")  // PDF, PRINTED, BOTH
+  level         String?  // PRIMARY, PREP, SECONDARY, UNIVERSITY, GRADUATE
+  grade         String?
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id])
+  fileUrl       String?  // For digital PDF access
+  isAvailable   Boolean  @default(true)
+  coupons       Coupon[]
+  purchases     MaterialPurchase[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  courses   Course[]
+  materials Material[]
+  createdAt DateTime @default(now())
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  rating    Int      @default(5)
+  comment   String?
+  userId    String
+  courseId  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model MaterialPurchase {
+  id          String   @id @default(cuid())
+  userId      String
+  materialId  String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  material    Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, materialId])
+}
+
+model Advertisement {
+  id          String   @id @default(cuid())
+  title       String?
+  image       String?  // URL for internal banners
+  link        String?  // Click destination
+  script      String?  // For external ad platforms (AdSense code)
+  position    String   // e.g., HOME_TOP, COURSE_SIDE, DASHBOARD_BANNER
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action      String   // e.g., DELETE_COURSE, UPDATE_USER_ROLE
+  details     String?  // JSON or string detail
+  targetId    String?  // ID of the affected resource
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
